@@ -174,35 +174,43 @@ function Zones:CancelSet( ply, force )
 	Core:Send( ply, "Print", { "Admin", Lang:Get( force and "ZoneCancel" or "ZoneFinish" ) } )
 end
 
-function Zones:FinishSet( ply, extra )
-	local editor = Zones.Editor[ ply ]
-	if not editor.End then editor.End = ply:GetPos() end
-	
+function Zones:FinishSet(ply, extra)
+	local editor = Zones.Editor[ply]
+	if not editor.End then
+		editor.End = ply:GetPos()
+	end
+
 	if editor.Type == Zones.Type["LegitSpeed"] then
 		if not editor.Steps then
-			Zones.Editor[ ply ].Extra = extra
-			return Admin:HandleButton( ply, { -2, 26 } )
+			Zones.Editor[ply].Extra = extra
+			return Admin:HandleButton(ply, {-2, 26})
 		else
-			editor.Type = tonumber( tostring( editor.Type ) .. tostring( extra ) )
+			editor.Type = tonumber(tostring(editor.Type) .. tostring(extra))
 			extra = editor.Extra
 		end
 	end
-	
+
 	local Start, End = editor.Start, editor.End
-	local Min = util.TypeToString( Vector( math.min(Start.x, End.x), math.min(Start.y, End.y), math.min(Start.z, End.z) ) )
-	local Max = util.TypeToString( Vector( math.max(Start.x, End.x), math.max(Start.y, End.y), math.max(Start.z + 128, End.z + 128) ) )
-		
-	if sql.Query( "SELECT nType FROM game_zones WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. editor.Type ) and not extra then
-		sql.Query( "UPDATE game_zones SET vPos1 = '" .. Min .. "', vPos2 = '" .. Max .. "' WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. editor.Type )
-	else
-		sql.Query( "INSERT INTO game_zones VALUES ('" .. game.GetMap() .. "', " .. editor.Type .. ", '" .. Min .. "', '" .. Max .. "')" )
-	end
-	
-	Zones:CancelSet( ply )
+	local Min = util.TypeToString(Vector(math.min(Start.x, End.x), math.min(Start.y, End.y), math.min(Start.z, End.z)))
+	local Max = util.TypeToString(Vector(math.max(Start.x, End.x), math.max(Start.y, End.y), math.max(Start.z + 128, End.z + 128)))
+
+	SQL:Prepare("SELECT nType FROM game_zones WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. editor.Type
+	):Execute(function(data, varArg, szError)
+		if data and not extra then
+			local updateQuery = SQL:Prepare("UPDATE game_zones SET vPos1 = '" .. Min .. "', vPos2 = '" .. Max .. "' WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. editor.Type )
+			updateQuery:Execute()
+		else
+			local insertQuery = SQL:Prepare("INSERT INTO game_zones VALUES ('" .. game.GetMap() .. "', " .. editor.Type .. ", '" .. Min .. "', '" .. Max .. "')" )
+			insertQuery:Execute()
+		end
+	end)
+
+	Zones:CancelSet(ply)
 	Zones:Reload()
-	
+
 	if (editor.Type == Zones.Type["Bonus Start"] or editor.Type == Zones.Type["Bonus End"]) and not extra then
-		sql.Query( "DELETE FROM game_times WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. _C.Style.Bonus )
+		local deleteQuery = SQL:Prepare("DELETE FROM game_times WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. _C.Style.Bonus )
+		deleteQuery:Execute()
 		Timer:LoadRecords()
 	end
 end

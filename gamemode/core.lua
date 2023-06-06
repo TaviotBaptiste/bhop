@@ -15,10 +15,10 @@ _C = _C or {}
 _C["Version"] = 7.26
 _C["PageSize" ] = 7
 _C["GameType"] = "bhop"
-_C["ServerName"] = "My Bunny Hop"
+_C["ServerName"] = "My Bunny Hop server"
 _C["Identifier"] = "yourservername-" .. _C.GameType -- If you want clientside caching to work (lower player join usage), set this
 _C["SteamGroup"] = "" -- Set this to your group URL if you want people to see a pop-up when joining for the first time (cl_init.lua at the bottom)
-_C["MaterialID"] = "flow" -- Change this to the name of the folder in content/materials/
+_C["MaterialID"] = "sensta" -- Change this to the name of the folder in content/materials/
 
 _C["Team"] = { Players = 1, Spectator = TEAM_SPECTATOR }
 _C["Style"] = { Normal = 1, SW = 2, HSW = 3, ["W-Only"] = 4, ["A-Only"] = 5, Legit = 6, ["Easy Scroll"] = 7, Bonus = 8, Practice = 9 }

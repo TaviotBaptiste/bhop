@@ -270,18 +270,21 @@ function Command:Init()
 		Core:Send( ply, "GUI_Open", { "Maps", { "Left", Player:GetMapsBeat( ply ) } } )
 	end )
 	
-	self:Register( { "mywr", "mywrs", "wr1", "wr#1", "wrcount", "wrcounter", "countwr", "wramount" }, function( ply )
-		local Query = sql.Query( "SELECT t2.* FROM game_times AS t2 INNER JOIN (SELECT szUID, nStyle, szPlayer, MIN(nTime) AS nMin, szMap FROM game_times GROUP BY szMap, nStyle) AS t1 ON t2.szUID = t1.szUID AND t2.nTime = t1.nMin WHERE t2.szUID = '" .. ply:SteamID() .. "'" )
-		if not Query then
-			Core:Send( ply, "Print", { "General", "You have no #1 times." } )
-		else
-			local tab = {}
-			for _,d in pairs( Query ) do
-				table.insert( tab, { d["szMap"], tonumber( d["nTime"] ), tonumber( d["nStyle"] ), { d["szDate"], d["vData"], tonumber( d["nPoints"] ), d["szPlayer"] } } )
+
+	self:Register({"mywr", "mywrs", "wr1", "wr#1", "wrcount", "wrcounter", "countwr", "wramount"}, function(ply)
+		SQL:Prepare("SELECT t2.* FROM game_times AS t2 INNER JOIN (SELECT szUID, nStyle, szPlayer, MIN(nTime) AS nMin, szMap FROM game_times GROUP BY szMap, nStyle) AS t1 ON t2.szUID = t1.szUID AND t2.nTime = t1.nMin WHERE t2.szUID = '" .. ply:SteamID() .. "'" 
+		):Execute(function(data, varArg, szError)
+			if not data then
+				Core:Send(ply, "Print", {"General", "You have no #1 times."})
+			else
+				local tab = {}
+				for _, d in pairs(data) do
+					table.insert(tab, {d["szMap"],tonumber(d["nTime"]),tonumber(d["nStyle"]),{d["szDate"], d["vData"], tonumber(d["nPoints"]), d["szPlayer"]}})
+				end
+				Core:Send(ply, "GUI_Open", {"Maps", {"WR", tab}})
 			end
-			Core:Send( ply, "GUI_Open", { "Maps", { "WR", tab } } )
-		end
-	end )
+		end)
+	end)
 	
 	-- Weapon functionality
 	self:Register( { "crosshair", "cross", "togglecrosshair", "togglecross", "setcross" }, function( ply, args )

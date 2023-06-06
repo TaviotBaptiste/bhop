@@ -150,7 +150,9 @@ end
 -- RANKING
 
 function Player:LoadRanks()
-	local Data = sql.Query( "SELECT SUM(nMultiplier) AS nSum, SUM(nBonusMultiplier) AS nBonus FROM game_map" )
+	SQL:Prepare("SELECT SUM(nMultiplier) AS nSum, SUM(nBonusMultiplier) AS nBonus FROM game_map" 
+	):Execute(function(Data, varArg, szError)
+		
 	if Core:Assert( Data, "nSum" ) then
 		local Normal, Bonus = tonumber( Data[ 1 ]["nSum"] ) or 1, tonumber( Data[ 1 ]["nBonus"] ) or 1
 		Player.MultiplierNormal = Normal + Bonus
@@ -172,6 +174,8 @@ function Player:LoadRanks()
 		_C.Ranks[ n ][ 3 ] = Core:Exp( Player.NormalScalar, n )
 		_C.Ranks[ n ][ 4 ] = Core:Exp( Player.AngledScalar, n )
 	end
+	end)
+	
 end
 
 
@@ -192,37 +196,43 @@ function Player:LoadRank( ply, bUpdate )
 	end
 end
 
-function Player:LoadBest( ply )
+function Player:LoadBest(ply)
 	if ply.Style == _C.Style.Practice then
-		ply:SetNWFloat( "Record", ply.Record )
+		ply:SetNWFloat("Record", ply.Record)
 		ply.SpecialRank = 0
-		ply:SetNWInt( "SpecialRank", ply.SpecialRank )
-		return Core:Send( ply, "Timer", { "Record", ply.Record, ply.Style } )
+		ply:SetNWInt("SpecialRank", ply.SpecialRank)
+		return Core:Send(ply, "Timer", {"Record", ply.Record, ply.Style})
 	end
 
-	local Fetch = sql.Query( "SELECT t1.nTime, (SELECT COUNT(*) + 1 FROM game_times AS t2 WHERE szMap = '" .. game.GetMap() .. "' AND t2.nTime < t1.nTime AND nStyle = " .. ply.Style .. ") AS nRank FROM game_times AS t1 WHERE t1.szUID = '" .. ply:SteamID() .. "' AND t1.nStyle = " .. ply.Style .. " AND t1.szMap = '" .. game.GetMap() .. "'" )
-	if Core:Assert( Fetch, "nTime" ) then
-		ply.Record = tonumber( Fetch[ 1 ]["nTime"] )
-		ply:SetNWFloat( "Record", ply.Record )
-		
-		Core:Send( ply, "Timer", { "Record", ply.Record, ply.Style } )
-		Player:SetRankMedal( ply, tonumber( Fetch[ 1 ]["nRank"] ) )
+	SQL:Prepare(
+		"SELECT t1.nTime, (SELECT COUNT(*) + 1 FROM game_times AS t2 WHERE szMap = '" .. game.GetMap() .. "' AND t2.nTime < t1.nTime AND nStyle = " .. ply.Style .. ") AS nRank FROM game_times AS t1 WHERE t1.szUID = '" .. ply:SteamID() .. "' AND t1.nStyle = " .. ply.Style .. " AND t1.szMap = '" .. game.GetMap() .. "'" 
+	):Execute(function(data, varArg, szError)
+	end)
+	if Core:Assert(data, "nTime") then
+		ply.Record = tonumber(data[1]["nTime"])
+		ply:SetNWFloat("Record", ply.Record)
+
+		Core:Send(ply, "Timer", {"Record", ply.Record, ply.Style})
+		Player:SetRankMedal(ply, tonumber(data[1]["nRank"]))
 	else
-		ply:SetNWFloat( "Record", ply.Record )
-		Core:Send( ply, "Timer", { "Record", ply.Record, ply.Style } )
-		
+		ply:SetNWFloat("Record", ply.Record)
+		Core:Send(ply, "Timer", {"Record", ply.Record, ply.Style})
+
 		ply.SpecialRank = 0
-		ply:SetNWInt( "SpecialRank", ply.SpecialRank )
+		ply:SetNWInt("SpecialRank", ply.SpecialRank)
 	end
 end
 
-function Player:GetPointSum( nStyle, szUID )
-	local Data = sql.Query( "SELECT SUM(nPoints) AS nSum FROM game_times WHERE szUID = '" .. szUID .. "' AND (" .. Player:GetMatchingStyles( nStyle ) .. ")" )
-	if Core:Assert( Data, "nSum" ) then
-		return tonumber( Data[ 1 ]["nSum"] ) or 0
-	end
-	
-	return 0
+function Player:GetPointSum(nStyle, szUID)
+	SQL:Prepare(
+		"SELECT SUM(nPoints) AS nSum FROM game_times WHERE szUID = '" .. szUID .. "' AND (" .. Player:GetMatchingStyles( nStyle ) .. ")"
+	):Execute(function(Data, varArg, szError)
+		if Core:Assert( Data, "nSum" ) then
+			return tonumber( Data[ 1 ]["nSum"] ) or 0
+		end
+		
+		return 0
+	end)
 end
 
 function Player:GetRank( nPoints, nType )
@@ -236,7 +246,6 @@ function Player:GetRank( nPoints, nType )
 	
 	return Rank
 end
-
 function Player:SetSubRank( ply, nRank, nPoints )
 	if nRank >= #_C.Ranks then
 		-- To-Do: Make sure the Nightmare rank has 1 extra symbol for true top 1
@@ -279,6 +288,7 @@ function Player:ReloadSubRanks( sender, nOld )
 		local nPoints = p.RankSum - nCurrent + nNew
 		
 		local nRank = self:GetRank( nPoints, Player:GetRankType( p.Style, true ) )
+		
 		if nRank != p.Rank then
 			p.Rank = nRank
 			p:SetNWInt( "Rank", p.Rank )
@@ -289,35 +299,39 @@ function Player:ReloadSubRanks( sender, nOld )
 	end
 end
 
-function Player:SetRankMedal( ply, nPos )
-	local Query = sql.Query( "SELECT t1.szUID, (SELECT COUNT(*) + 1 FROM game_times AS t2 WHERE szMap = '" .. game.GetMap() .. "' AND t2.nTime < t1.nTime AND nStyle = " .. ply.Style .. ") AS nRank FROM game_times AS t1 WHERE t1.szMap = '" .. game.GetMap() .. "' AND t1.nStyle = " .. ply.Style .. " AND nRank < 4 ORDER BY nRank ASC" )
-	if Core:Assert( Query, "szUID" ) then
-		for _,p in pairs( player.GetHumans() ) do
-			if p.Style != ply.Style then continue end
-			local bSet = false
-			
-			for _,d in pairs( Query ) do
-				if p:SteamID() == d["szUID"] then
-					bSet = true
-					
-					if tonumber( d["nRank"] ) > 3 then
-						if p.SpecialRank then
-							p.SpecialRank = 0
-							p:SetNWInt( "SpecialRank", p.SpecialRank )
+function Player:SetRankMedal(ply, nPos)
+    SQL:Prepare("SELECT t1.szUID, (SELECT COUNT(*) + 1 FROM game_times AS t2 WHERE szMap = '" .. game.GetMap() .. "' AND t2.nTime < t1.nTime AND nStyle = " .. ply.Style .. ") AS nRank FROM game_times AS t1 WHERE t1.szMap = '" .. game.GetMap() .. "' AND t1.nStyle = " .. ply.Style .. " AND nRank < 4 ORDER BY nRank ASC"
+	):Execute(function(data, varArg, szError)
+		if Core:Assert(data, "szUID") then
+			for _, p in pairs(player.GetHumans()) do
+				if p.Style ~= ply.Style then
+					continue
+				end
+				local bSet = false
+	
+				for _, d in pairs(data) do
+					if p:SteamID() == d["szUID"] then
+						bSet = true
+	
+						if tonumber(d["nRank"]) > 3 then
+							if p.SpecialRank then
+								p.SpecialRank = 0
+								p:SetNWInt("SpecialRank", p.SpecialRank)
+							end
+						else
+							p.SpecialRank = tonumber(d["nRank"])
+							p:SetNWInt("SpecialRank", p.SpecialRank)
 						end
-					else
-						p.SpecialRank = tonumber( d["nRank"] )
-						p:SetNWInt( "SpecialRank", p.SpecialRank )
 					end
 				end
-			end
-			
-			if not bSet and p.SpecialRank then
-				p.SpecialRank = 0
-				p:SetNWInt( "SpecialRank", p.SpecialRank )
+	
+				if not bSet and p.SpecialRank then
+					p.SpecialRank = 0
+					p:SetNWInt("SpecialRank", p.SpecialRank)
+				end
 			end
 		end
-	end
+    end)
 end
 
 function Player:UpdateRank( ply )
@@ -388,16 +402,21 @@ function Player:LoadTop()
 	TopCache[ nNormal ] = {}
 	TopCache[ nAngled ] = {}
 
-	local Normal = sql.Query( "SELECT szPlayer, SUM(nPoints) as nSum FROM game_times WHERE (nStyle = " .. _C.Style.Normal .. " OR nStyle = " .. _C.Style.Bonus .. ") GROUP BY szUID ORDER BY nSum DESC LIMIT " .. TopLimit )
-	if Core:Assert( Normal, "nSum" ) then
-		for i,d in pairs( Normal ) do
+    SQL:Prepare("SELECT szPlayer, SUM(nPoints) as nSum FROM game_times WHERE (nStyle = " .. _C.Style.Normal .. " OR nStyle = " .. _C.Style.Bonus .. ") GROUP BY szUID ORDER BY nSum DESC LIMIT " .. TopLimit 
+	):Execute(function(data, varArg, szError)
+		
+	if Core:Assert( data, "nSum" ) then
+		for i,d in pairs( data ) do
 			TopCache[ nNormal ][ i ] = { string.sub( d["szPlayer"], 1, 20 ), math.floor( tonumber( d["nSum"] ) ) }
 		end
 	end
-	
-	local Angled = sql.Query( "SELECT szPlayer, SUM(nPoints) as nSum FROM game_times WHERE (nStyle = " .. _C.Style.SW .. " OR nStyle = " .. _C.Style.HSW .. ") GROUP BY szUID ORDER BY nSum DESC LIMIT " .. TopLimit )
-	if Core:Assert( Angled, "nSum" ) then
-		for i,d in pairs( Angled ) do
+    end)
+
+	SQL:Prepare("SELECT szPlayer, SUM(nPoints) as nSum FROM game_times WHERE (nStyle = " .. _C.Style.SW .. " OR nStyle = " .. _C.Style.HSW .. ") GROUP BY szUID ORDER BY nSum DESC LIMIT " .. TopLimit 
+	):Execute(function(data, varArg, szError)
+    end)
+	if Core:Assert( data, "nSum" ) then
+		for i,d in pairs( data ) do
 			TopCache[ nAngled ][ i ] = { string.sub( d["szPlayer"], 1, 20 ), math.floor( tonumber( d["nSum"] ) ) }
 		end
 	end
@@ -429,23 +448,25 @@ function Player:SendTopList( ply, nPage, nType )
 end
 
 
-function Player:GetMapsBeat( ply )
-	if ply.BeatReceived and ply.BeatReceived == ply.Style then
-		return nil
-	else
-		ply.BeatReceived = ply.Style
-	end
-	
-	local List = sql.Query( "SELECT szMap, nTime, nPoints FROM game_times WHERE szUID = '" .. ply:SteamID() .. "' AND nStyle = " .. ply.Style .. " ORDER BY nPoints ASC" )
-	if Core:Assert( List, "szMap" ) then
-		local tab = {}
-		for _,d in pairs( List ) do
-			table.insert( tab, { d["szMap"], tonumber( d["nTime"] ), tonumber( d["nPoints"] ) } )
+function Player:GetMapsBeat(ply)
+    if ply.BeatReceived and ply.BeatReceived == ply.Style then
+        return nil
+    else
+        ply.BeatReceived = ply.Style
+    end
+
+    
+    SQL:Prepare("SELECT szMap, nTime, nPoints FROM game_times WHERE szUID = '" .. ply:SteamID() .. "' AND nStyle = " .. ply.Style .. " ORDER BY nPoints ASC" 
+	):Execute(function(data, varArg, szError)
+		if Core:Assert( data, "szMap" ) then
+			local tab = {}
+			for _,d in pairs( data ) do
+				table.insert( tab, { d["szMap"], tonumber( d["nTime"] ), tonumber( d["nPoints"] ) } )
+			end
+			return tab
 		end
-		return tab
-	end
-	
-	return {}
+		return {}
+    end)
 end
 
 
@@ -461,30 +482,33 @@ function Player:SendRemoteWRList( ply, szMap, nStyle, nPage, bUpdate )
 	
 	local RWRC = RemoteWRCache[ szMap ]
 	
-	if not RWRC or (type( RWRC ) == "table" and not RWRC[ nStyle ]) then
-		if RTV:MapExists( szMap ) then
-			local List = sql.Query( "SELECT * FROM game_times WHERE szMap = '" .. szMap .. "' AND nStyle = " .. nStyle .. " ORDER BY nTime ASC" )
+	if not RWRC or (type(RWRC) == "table" and not RWRC[nStyle]) then
+		if RTV:MapExists(szMap) then
+
 			if not RWRC then
-				RemoteWRCache[ szMap ] = {}
+				RemoteWRCache[szMap] = {}
 			end
 			
-			RemoteWRCache[ szMap ][ nStyle ] = {}
+			RemoteWRCache[szMap][nStyle] = {}
 			
-			if Core:Assert( List, "szUID" ) then
-				for _,data in pairs( List ) do
-					table.insert( RemoteWRCache[ szMap ][ nStyle ], { data["szUID"], data["szPlayer"], tonumber( data["nTime"] ), Core:Null( data["szDate"] ), Core:Null( data["vData"] ) } )
+			SQL:Prepare("SELECT * FROM game_times WHERE szMap = '" .. szMap .. "' AND nStyle = " .. nStyle .. " ORDER BY nTime ASC"
+			):Execute(function(Data, varArg, szError)	
+				if Core:Assert(Data, "szUID") then
+					for _, data in pairs(Data) do
+						table.insert(RemoteWRCache[szMap][nStyle], {data["szUID"], data["szPlayer"], tonumber(data["nTime"]), Core:Null(data["szDate"]), Core:Null(data["vData"])})
+					end
 				end
-			end
-			
-			local a = nPage * _C.PageSize - _C.PageSize
-			for i = 1, _C.PageSize do
-				i = i + a
-				if RemoteWRCache[ szMap ][ nStyle ][ i ] then
-					SendData[ i ] = RemoteWRCache[ szMap ][ nStyle ][ i ]
+				
+				local a = nPage * _C.PageSize - _C.PageSize
+				for i = 1, _C.PageSize do
+					i = i + a
+					if RemoteWRCache[szMap][nStyle][i] then
+						SendData[i] = RemoteWRCache[szMap][nStyle][i]
+					end
 				end
-			end
-			
-			SendCount = #RemoteWRCache[ szMap ][ nStyle ]
+				
+				SendCount = #RemoteWRCache[szMap][nStyle]
+			end)
 		else
 			return Core:Send( ply, "Print", { "General", Lang:Get( "MapInavailable", { szMap } ) } )
 		end

@@ -1257,32 +1257,36 @@ function Admin:HandleRequest( ply, args )
 		
 		Zones:StartSet( ply, Type )
 	elseif ID == 3 then
-		local nMultiplier = tonumber( Value )
+		local nMultiplier = tonumber(Value)
 		if not nMultiplier then
-			return Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminInvalidFormat", { Value, "Number" } ) } )
+			return Core:Send(ply, "Print", {"Admin", Lang:Get("AdminInvalidFormat", {Value, "Number"})})
 		end
-		
+	
 		local nOld = Timer.Multiplier or 1
 		Timer.Multiplier = nMultiplier
-		
-		local Check = sql.Query( "SELECT szMap FROM game_map WHERE szMap = '" .. game.GetMap() .. "'" )
-		if Core:Assert( Check, "szMap" ) then
-			sql.Query( "UPDATE game_map SET nMultiplier = " .. Timer.Multiplier .. " WHERE szMap = '" .. game.GetMap() .. "'" )
-		else
-			sql.Query( "INSERT INTO game_map VALUES ('" .. game.GetMap() .. "', " .. Timer.Multiplier .. ", NULL, 0, NULL)" )
-		end
-		
+	
+		local selectQuery = SQL:Prepare("SELECT szMap FROM game_map WHERE szMap = {0}", {game.GetMap()})
+		selectQuery:Execute(function(data, varArg, szError)
+			if data then
+				local updateQuery = SQL:Prepare("UPDATE game_map SET nMultiplier = {0} WHERE szMap = {1}", {Timer.Multiplier, game.GetMap()})
+				updateQuery:Execute()
+			else
+				local insertQuery = SQL:Prepare("INSERT INTO game_map VALUES ({0}, {1}, NULL, 0, NULL)", {game.GetMap(), Timer.Multiplier})
+				insertQuery:Execute()
+			end
+		end)
+	
 		for i = _C.Style.Normal, _C.Style.Bonus do
-			Timer:RecalculatePoints( i )
+			Timer:RecalculatePoints(i)
 		end
 		Timer:LoadRecords()
-		for _,p in pairs( player.GetHumans() ) do
-			Player:UpdateRank( p )
+		for _, p in pairs(player.GetHumans()) do
+			Player:UpdateRank(p)
 		end
-		
+	
 		RTV:UpdateMapListVersion()
-		Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminSetValue", { "Multiplier", Timer.Multiplier } ) } )
-		Admin:AddLog( "Changed map multiplier on " .. game.GetMap() .. " from " .. nOld .. " to " .. nMultiplier, ply:SteamID(), ply:Name() )
+		Core:Send(ply, "Print", {"Admin", Lang:Get("AdminSetValue", {"Multiplier", Timer.Multiplier})})
+		Admin:AddLog("Changed map multiplier on " .. game.GetMap() .. " from " .. nOld .. " to " .. nMultiplier, ply:SteamID(), ply:Name())	
 	elseif ID == 5 then
 		Core:Unload()
 		RunConsoleCommand( "changelevel", Value )
@@ -1364,32 +1368,35 @@ function Admin:HandleRequest( ply, args )
 			Core:Send( ply, "Admin", { "Request", tabRequest } )
 		end
 	elseif ID == 90 then
-		local nValue = tonumber( Value )
+		local nValue = tonumber(Value)
 		if not nValue then
-			return Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminInvalidFormat", { Value, "Number" } ) } )
+			return Core:Send(ply, "Print", {"Admin", Lang:Get("AdminInvalidFormat", {Value, "Number"})})
 		end
-
-		local OldPos1 = util.TypeToString( ply.ZoneData[ 2 ] )
-		local OldPos2 = util.TypeToString( ply.ZoneData[ 3 ] )
-		
-		local nMin = ply.ZoneData[ 2 ].z
-		ply.ZoneData[ 3 ].z = nMin + nValue
-		
-		sql.Query( "UPDATE game_zones SET vPos1 = '" .. util.TypeToString( ply.ZoneData[ 2 ] ) .. "', vPos2 = '" .. util.TypeToString( ply.ZoneData[ 3 ] ) .. "' WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. ply.ZoneData[ 1 ] .. " AND vPos1 = '" .. OldPos1 .. "' AND vPos2 = '" .. OldPos2 .. "'" )
-		
+	
+		local OldPos1 = util.TypeToString(ply.ZoneData[2])
+		local OldPos2 = util.TypeToString(ply.ZoneData[3])
+	
+		local nMin = ply.ZoneData[2].z
+		ply.ZoneData[3].z = nMin + nValue
+	
+		local updateQuery = SQL:Prepare("UPDATE game_zones SET vPos1 = {0}, vPos2 = {1} WHERE szMap = {2} AND nType = {3} AND vPos1 = {4} AND vPos2 = {5}", {util.TypeToString(ply.ZoneData[2]), util.TypeToString(ply.ZoneData[3]), game.GetMap(), ply.ZoneData[1], OldPos1, OldPos2})
+		updateQuery:Execute()
+	
 		Zones:Reload()
-		Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminOperationComplete" ) } )
+		Core:Send(ply, "Print", {"Admin", Lang:Get("AdminOperationComplete")})
+	
 	elseif ID == 10 then
-		local nIndex, bFind, nType = tonumber( Value ), false, nil
-		
-		for _,zone in pairs( Zones.Entities ) do
-			if IsValid( zone ) and zone:EntIndex() == nIndex then
+		local nIndex, bFind, nType = tonumber(Value), false, nil
+
+		for _, zone in pairs(Zones.Entities) do
+			if IsValid(zone) and zone:EntIndex() == nIndex then
 				if zone.zonetype == Zones.Type.LegitSpeed and zone.speed then
 					zone.deltype = zone.zonetype .. zone.speed
 				end
-				
-				sql.Query( "DELETE FROM game_zones WHERE szMap = '" .. game.GetMap() .. "' AND nType = " .. (zone.deltype or zone.zonetype) .. " AND vPos1 = '" .. util.TypeToString( zone.min ) .. "' AND vPos2 = '" .. util.TypeToString( zone.max ) .. "'" )
-				
+	
+				local deleteQuery = SQL:Prepare("DELETE FROM game_zones WHERE szMap = {0} AND nType = {1} AND vPos1 = {2} AND vPos2 = {3}", {game.GetMap(), (zone.deltype or zone.zonetype), util.TypeToString(zone.min), util.TypeToString(zone.max)})
+				deleteQuery:Execute()
+	
 				nType = zone.zonetype
 				bFind = true
 				break
@@ -1417,16 +1424,23 @@ function Admin:HandleRequest( ply, args )
 			Admin:HandleButton( ply, { -2, ID } )
 		else
 			local szValue = Timer.Options == 0 and "NULL" or Timer.Options
+
+			local query = SQL:Prepare("SELECT szMap FROM game_map WHERE szMap = ?")
+			query:BindParameters(game.GetMap())
+			query:Execute(function(data, varArg, szError)
+				if Core:Assert(data, "szMap") then
+					local updateQuery = SQL:Prepare("UPDATE game_map SET nOptions = ? WHERE szMap = ?")
+					updateQuery:BindParameters(szValue, game.GetMap())
+					updateQuery:Execute()
+				else
+					local insertQuery = SQL:Prepare("INSERT INTO game_map VALUES (?, ?, NULL, 0, ?)")
+					insertQuery:BindParameters(game.GetMap(), Timer.Multiplier, szValue)
+					insertQuery:Execute()
+				end
+			end)
 		
-			local Check = sql.Query( "SELECT szMap FROM game_map WHERE szMap = '" .. game.GetMap() .. "'" )
-			if Core:Assert( Check, "szMap" ) then
-				sql.Query( "UPDATE game_map SET nOptions = " .. szValue .. " WHERE szMap = '" .. game.GetMap() .. "'" )
-			else
-				sql.Query( "INSERT INTO game_map VALUES ('" .. game.GetMap() .. "', " .. Timer.Multiplier .. ", NULL, 0, " .. szValue .. ")" )
-			end
-			
-			Admin:AddLog( "Admin changed map options to " .. szValue, ply:SteamID(), ply:Name() )
-			Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminSetValue", { "Options", Timer.Options } ) } )
+			Admin:AddLog("Admin changed map options to " .. szValue, ply:SteamID(), ply:Name())
+			Core:Send(ply, "Print", { "Admin", Lang:Get("AdminSetValue", { "Options", Timer.Options }) })
 		end
 	elseif ID == 15 then
 		local target = Admin:FindPlayer( ply.AdminTarget )
@@ -1489,29 +1503,34 @@ function Admin:HandleRequest( ply, args )
 		end
 		
 		local d = ply.TimeRemoveData
-		local nStyle, nRank, szUID = tonumber( d[ 1 ] ), tonumber( d[ 2 ] ), tostring( d[ 3 ] )
+		local nStyle, nRank, szUID = tonumber(d[1]), tonumber(d[2]), tostring(d[3])
 		
-		sql.Query( "DELETE FROM game_times WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. nStyle .. " AND szUID = '" .. szUID .. "'" )
+		local deleteQuery = SQL:Prepare("DELETE FROM game_times WHERE szMap = ? AND nStyle = ? AND szUID = ?")
+		deleteQuery:BindParameters(game.GetMap(), nStyle, szUID)
+		deleteQuery:Execute()
 		Timer:LoadRecords()
 		
-		local i = Bot:GetInfo( nStyle )
+		local i = Bot:GetInfo(nStyle)
 		if i and i.Style and i.SteamID and i.Style == nStyle and i.SteamID == szUID then
-			sql.Query( "DELETE FROM game_bots WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. nStyle .. " AND szUID = '" .. szUID .. "'" )
-			
-			if Bot:Exists( i.Style ) then
-				for _,b in pairs( player.GetBots() ) do
+			local deleteBotQuery = SQL:Prepare("DELETE FROM game_bots WHERE szMap = ? AND nStyle = ? AND szUID = ?")
+			deleteBotQuery:BindParameters(game.GetMap(), nStyle, szUID)
+			deleteBotQuery:Execute()
+		
+			if Bot:Exists(i.Style) then
+				for _, b in pairs(player.GetBots()) do
 					if b.Style == i.Style then
 						b.DCReason = "Bot runner time was removed"
-						b:Kick( "Bot time was removed" )
+						b:Kick("Bot time was removed")
 					end
 				end
 			end
-			
-			Bot:ClearStyle( nStyle )
-			
+		
+			Bot:ClearStyle(nStyle)
+		
 			local szStyle = nStyle == _C.Style.Normal and ".txt" or ("_" .. nStyle .. ".txt")
-			if file.Exists( _C.GameType .. "/bots/bot_" .. game.GetMap() .. szStyle, "DATA" ) then
-				file.Delete( _C.GameType .. "/bots/bot_" .. game.GetMap() .. szStyle )
+			local filePath = _C.GameType .. "/bots/bot_" .. game.GetMap() .. szStyle
+			if file.Exists(filePath, "DATA") then
+				file.Delete(filePath)
 			end
 		end
 		
@@ -1546,7 +1565,9 @@ function Admin:HandleRequest( ply, args )
 			file.Delete( _C.GameType .. "/bots/bot_" .. game.GetMap() .. szStyle )
 		end
 		
-		sql.Query( "DELETE FROM game_bots WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. nStyle )
+		SQL:Prepare("DELETE FROM game_bots WHERE szMap = ? AND nStyle = ?")
+		deleteQuery:BindParameters(game.GetMap(), nStyle)
+		deleteQuery:Execute()
 		Bot:ClearStyle( nStyle )
 	elseif ID == 19 then
 		local nFrame = tonumber( Value )
@@ -1568,51 +1589,72 @@ function Admin:HandleRequest( ply, args )
 		Bot:SetInfoData( ply.AdminBotStyle, info )
 		Bot:SetFramePosition( ply.AdminBotStyle, nFrame )
 	elseif ID == 21 then
-		local nMultiplier = tonumber( Value )
+		
+		local nMultiplier = tonumber(Value)
 		if not nMultiplier then
-			return Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminInvalidFormat", { Value, "Number" } ) } )
+			return Core:Send(ply, "Print", {"Admin", Lang:Get("AdminInvalidFormat", {Value, "Number"})})
 		end
 		
 		local nOld = Timer.BonusMultiplier or 1
 		Timer.BonusMultiplier = nMultiplier
 		
-		local Check = sql.Query( "SELECT szMap FROM game_map WHERE szMap = '" .. game.GetMap() .. "'" )
-		if Core:Assert( Check, "szMap" ) then
-			sql.Query( "UPDATE game_map SET nBonusMultiplier = " .. Timer.BonusMultiplier .. " WHERE szMap = '" .. game.GetMap() .. "'" )
-		else
-			sql.Query( "INSERT INTO game_map VALUES ('" .. game.GetMap() .. "', " .. Timer.Multiplier .. ", " .. Timer.BonusMultiplier .. ", 0, NULL)" )
-		end
-		
-		Timer:RecalculatePoints( _C.Style.Bonus )
-		Timer:LoadRecords()
-		for _,p in pairs( player.GetHumans() ) do
-			Player:UpdateRank( p )
-		end
-		
-		Admin:AddLog( "Changed bonus multiplier on " .. game.GetMap() .. " from " .. nOld .. " to " .. nMultiplier, ply:SteamID(), ply:Name() )
-		Core:Send( ply, "Print", { "Admin", Lang:Get( "AdminSetValue", { "Bonus multiplier", Timer.BonusMultiplier } ) } )
-	elseif ID == 22 then
-		if not RTV:MapExists( Value ) then
-			Core:Send( ply, "Print", { "Admin", "The entered map '" .. Value .. "' is not on the nominate list, and thus cannot be deleted as it contains no info." } )
-		else
-			sql.Query( "DELETE FROM game_bots WHERE szMap = '" .. Value .. "'" )
-			sql.Query( "DELETE FROM game_map WHERE szMap = '" .. Value .. "'" )
-			sql.Query( "DELETE FROM game_times WHERE szMap = '" .. Value .. "'" )
-			sql.Query( "DELETE FROM game_zones WHERE szMap = '" .. Value .. "'" )
-			
-			if file.Exists( _C.GameType .. "/bots/bot_" .. Value .. ".txt", "DATA" ) then
-				file.Delete( _C.GameType .. "/bots/bot_" .. Value .. ".txt" )
+		local queryCheck = SQL:Prepare("SELECT szMap FROM game_map WHERE szMap = ?")
+		queryCheck:BindParameters(game.GetMap())
+		queryCheck:Execute(function(dataCheck, varArg, szErrorCheck)
+			if Core:Assert(dataCheck, "szMap") then
+				local queryUpdate = SQL:Prepare("UPDATE game_map SET nBonusMultiplier = ? WHERE szMap = ?")
+				queryUpdate:BindParameters(Timer.BonusMultiplier, game.GetMap())
+				queryUpdate:Execute()
+			else
+				local queryInsert = SQL:Prepare("INSERT INTO game_map VALUES (?, ?, ?, 0, NULL)")
+				queryInsert:BindParameters(game.GetMap(), Timer.Multiplier, Timer.BonusMultiplier)
+				queryInsert:Execute()
 			end
-			
+		end)
+		
+		Timer:RecalculatePoints(_C.Style.Bonus)
+		Timer:LoadRecords()
+		for _, p in pairs(player.GetHumans()) do
+			Player:UpdateRank(p)
+		end
+		
+		Admin:AddLog("Changed bonus multiplier on " .. game.GetMap() .. " from " .. nOld .. " to " .. nMultiplier, ply:SteamID(), ply:Name())
+		Core:Send(ply, "Print", {"Admin", Lang:Get("AdminSetValue", {"Bonus multiplier", Timer.BonusMultiplier})})
+	elseif ID == 22 then
+		if not RTV:MapExists(Value) then
+			Core:Send(ply, "Print", {"Admin", "The entered map '" .. Value .. "' is not on the nominate list, and thus cannot be deleted as it contains no info."})
+		else
+			local queryDeleteBots = SQL:Prepare("DELETE FROM game_bots WHERE szMap = ?")
+			queryDeleteBots:BindParameters(Value)
+			queryDeleteBots:Execute()
+		
+			local queryDeleteMap = SQL:Prepare("DELETE FROM game_map WHERE szMap = ?")
+			queryDeleteMap:BindParameters(Value)
+			queryDeleteMap:Execute()
+		
+			local queryDeleteTimes = SQL:Prepare("DELETE FROM game_times WHERE szMap = ?")
+			queryDeleteTimes:BindParameters(Value)
+			queryDeleteTimes:Execute()
+		
+			local queryDeleteZones = SQL:Prepare("DELETE FROM game_zones WHERE szMap = ?")
+			queryDeleteZones:BindParameters(Value)
+			queryDeleteZones:Execute()
+		
+			local botFilePath = _C.GameType .. "/bots/bot_" .. Value .. ".txt"
+			if file.Exists(botFilePath, "DATA") then
+				file.Delete(botFilePath)
+			end
+		
 			for i = 1, 8 do
-				if file.Exists( _C.GameType .. "/bots/bot_" .. Value .. "_" .. i .. ".txt", "DATA" ) then
-					file.Delete( _C.GameType .. "/bots/bot_" .. Value .. "_" .. i .. ".txt" )
+				local botFileIndexedPath = _C.GameType .. "/bots/bot_" .. Value .. "_" .. i .. ".txt"
+				if file.Exists(botFileIndexedPath, "DATA") then
+					file.Delete(botFileIndexedPath)
 				end
 			end
-			
-			Core:Send( ply, "Print", { "Admin", "All found info has been deleted!" } )
-			Admin:AddLog( "Fully removed map " .. Value, ply:SteamID(), ply:Name() )
-		end
+		
+			Core:Send(ply, "Print", {"Admin", "All found info has been deleted!"})
+			Admin:AddLog("Fully removed map " .. Value, ply:SteamID(), ply:Name())
+		end			
 	elseif ID == 26  then
 		local nValue = tonumber( Value )
 		if not nValue then
@@ -1629,10 +1671,12 @@ function Admin:HandleRequest( ply, args )
 		if not Core:IsValidStyle( nStyle ) then
 			return Core:Send( ply, "Print", { "Admin", "Invalid style entered!" } )
 		end
+
+		SQL:Prepare("DELETE FROM game_times WHERE szMap = ? AND nStyle = ?")
+		queryDeleteTimes:BindParameters(game.GetMap(), nStyle)
+		queryDeleteTimes:Execute()
 		
-		sql.Query( "DELETE FROM game_times WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. nStyle )
 		Timer:LoadRecords()
-		
 		for _,p in pairs( player.GetHumans() ) do
 			if IsValid( p ) then
 				Player:LoadBest( p )

@@ -1,5 +1,5 @@
 SQL = {}
-SQL.Use = false -- Set this to false if you don't want MySQL, if you want MySQL (for multiple servers, or better management / performance), set it to true
+SQL.Use = true -- Set this to false if you don't want MySQL, if you want MySQL (for multiple servers, or better management / performance), set it to true
 
 if SQL.Use then
 	-- Make sure you have libmysql in your root directory as well as the mysqloo module in your lua/bin folder
@@ -36,17 +36,21 @@ end
 
 
 function Core:LoadZones()
-	local zones = sql.Query( "SELECT nType, vPos1, vPos2 FROM game_zones WHERE szMap = '" .. game.GetMap() .. "'" )
-	if not zones then return end
+	SQL:Prepare("SELECT nType, vPos1, vPos2 FROM game_zones WHERE szMap = '" .. game.GetMap() .. "'"
+	):Execute(function(Data, varArg, szError)
+		
+	if not Data then return end
 	
 	Zones.Cache = {}
-	for _,data in pairs( zones ) do
+	for _,data in pairs( Data ) do
 		table.insert( Zones.Cache, {
 			Type = tonumber( data[ "nType" ] ),
 			P1 = util.StringToType( tostring( data[ "vPos1" ] ), "Vector" ),
 			P2 = util.StringToType( tostring( data[ "vPos2" ] ), "Vector" )
 		} )
 	end
+	end)
+
 end
 
 
@@ -80,7 +84,6 @@ function Core:AwaitLoad( bRetry )
 			if #Zones.Cache == 0 then
 				print( "Couldn't load data. Retrying (Try " .. Core.Try .. ")" )
 			end
-			
 			timer.Simple( 5, function() Core:AwaitLoad( true ) end )
 		else
 			Core:Lock( "Server failed to load zone data from the database (No zones set in time!)" )
@@ -262,8 +265,8 @@ SQL.Available = false
 local SQLObject
 local SQLDetails = {
 	Host = "127.0.0.1", Port = 3306,
-	User = "root", Pass = "", -- This is default for a lot of servers, but you'll probably have to change this
-	Database = "flow_gmod"
+	User = "gmodserver", Pass = "Xildrithedu05012020;", -- This is default for a lot of servers, but you'll probably have to change this
+	Database = "bhop"
 }
 
 local function SQL_Print( szMsg, varArg )
@@ -330,7 +333,6 @@ function SQL:CreateObject( SQL_ConnectCallback )
 	end
 
 	SQL.Busy = true
-	
 	SQLObject = mysqloo.connect( SQLDetails.Host, SQLDetails.User, SQLDetails.Pass, SQLDetails.Database, SQLDetails.Port )
 	SQLObject.onConnected = SQL_SelectCallback
 	SQLObject.onConnectionFailed = SQL_ConnectFailure

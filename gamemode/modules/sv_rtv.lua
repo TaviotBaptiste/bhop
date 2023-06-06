@@ -345,21 +345,22 @@ end
 
 function RTV:LoadData()
 	MapList = {}
-	
-	local Unique = sql.Query( "SELECT szMap, nMultiplier FROM game_map" )
-	if Core:Assert( Unique, "szMap" ) then
-		for _,data in pairs( Unique ) do
-			table.insert( MapList, { data["szMap"], Core:Null( data["nMultiplier"], 1 ) } )
+
+	local queryUnique = SQL:Prepare("SELECT szMap, nMultiplier FROM game_map")
+	local Unique = queryUnique:Execute()
+	if Core:Assert(Unique, "szMap") then
+		for _, data in pairs(Unique) do
+			table.insert(MapList, {data["szMap"], Core:Null(data["nMultiplier"], 1)})
 		end
 	end
-	
-	file.CreateDir( _C.GameType .. "/" )
-	
-	if not file.Exists( _C.GameType .. "/settings.txt", "DATA" ) then
-		file.Write( _C.GameType .. "/settings.txt", tostring( RTV.MapListVersion ) )
+
+	file.CreateDir(_C.GameType .. "/")
+
+	if not file.Exists(_C.GameType .. "/settings.txt", "DATA") then
+		file.Write(_C.GameType .. "/settings.txt", tostring(RTV.MapListVersion))
 	else
-		local data = file.Read( _C.GameType .. "/settings.txt", "DATA" )
-		RTV.MapListVersion = tonumber( data )
+		local data = file.Read(_C.GameType .. "/settings.txt", "DATA")
+		RTV.MapListVersion = tonumber(data)
 	end
 end
 

@@ -38,30 +38,47 @@ function Bot:Setup()
 end
 
 function Bot:LoadData()
-	local Result = sql.Query( "SELECT * FROM game_bots WHERE szMap = '" .. game.GetMap() .. "' ORDER BY nStyle ASC" )
-	if Core:Assert( Result, "nTime" ) then
-		for _,Info in pairs( Result ) do
-			local name = _C.GameType .. "/bots/bot_" .. game.GetMap()
-			local style = tonumber( Info["nStyle"] )
-			
-			if style != _C.Style.Normal then
-				name = name .. "_" .. style .. ".txt"
-			else
-				name = name .. ".txt"
+	local queryLoadData = SQL:Prepare("SELECT * FROM game_bots WHERE szMap = '" .. game.GetMap() .. "' ORDER BY nStyle ASC"
+	):Execute(function(data, varArg, szError)
+		if not data then return end
+		if Core:Assert(queryLoadData, "nTime") then
+			for _, Info in pairs(queryLoadData) do
+				local name = _C.GameType .. "/bots/bot_" .. game.GetMap()
+				local style = tonumber(Info["nStyle"])
+
+				if style ~= _C.Style.Normal then
+					name = name .. "_" .. style .. ".txt"
+				else
+					name = name .. ".txt"
+				end
+
+				local RawData = file.Read(name, "DATA")
+				if not RawData or RawData == "" then
+					continue
+				end
+				local RunData = util.Decompress(RawData)
+				if not RunData then
+					continue
+				end
+
+				BotData[style] = util.JSONToTable(RunData)
+				BotFrame[style] = 1
+				BotFrames[style] = #BotData[style][1]
+				BotInfo[style] = {
+					Name = Info["szPlayer"],
+					Time = tonumber(Info["nTime"]),
+					Style = style,
+					SteamID = Info["szSteam"],
+					Date = Info["szDate"],
+					Saved = true,
+					Start = ct(),
+					CompletedRun = true
+				}
 			end
-			
-			local RawData = file.Read( name, "DATA" )
-			if not RawData or RawData == "" then continue end
-			local RunData = util.Decompress( RawData )
-			if not RunData then continue end
-			
-			BotData[ style ] = util.JSONToTable( RunData )
-			BotFrame[ style ] = 1
-			BotFrames[ style ] = #BotData[ style ][ 1 ]
-			BotInfo[ style ] = { Name = Info["szPlayer"], Time = tonumber( Info["nTime"] ), Style = style, SteamID = Info["szSteam"], Date = Info["szDate"], Saved = true, Start = ct(), CompletedRun = true }
 		end
-	end
+	end)
 end
+
 
 function Bot:EndRun( ply, nTime, nRank )
 	if not IsValid( ply ) or not Bot:IsRecorded( ply ) then return end
@@ -198,49 +215,60 @@ function Bot:CheckStatus()
 	end )
 end
 
-function Bot:Save( bSave )
+function Bot:Save(bSave)
 	if not bSave and #player.GetHumans() > 0 then
-		timer.Simple( 1, function() Bot:Save( true ) end )
-		return Core:Broadcast( "Print", { "General", Lang:Get( "BotSaving" ) } )
+		timer.Simple(1, function()
+			Bot:Save(true)
+		end)
+		return Core:Broadcast("Print", {"General", Lang:Get("BotSaving")})
 	end
-	
-	for style,_ in pairs( BotData ) do
-		local info = BotInfo[ style ]
+
+	for style, _ in pairs(BotData) do
+		local info = BotInfo[style]
 		if not info.Saved then
-			if not BotData[ style ] or not BotData[ style ][ 1 ] or #BotData[ style ][ 1 ] == 0 or BotFrames[ style ] == 0 then return end
-			
-			local Exist = sql.Query( "SELECT nTime FROM game_bots WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. info.Style )
-			if Core:Assert( Exist, "nTime" ) and tonumber( Exist[ 1 ]["nTime"] ) then
-				sql.Query( "UPDATE game_bots SET szPlayer = " .. sql.SQLStr( info.Name ) .. ", nTime = " .. info.Time .. ", szSteam = '" .. info.SteamID .. "', szDate = '" .. info.Date .. "' WHERE szMap = '" .. game.GetMap() .. "' AND nStyle = " .. info.Style )
-			else
-				sql.Query( "INSERT INTO game_bots VALUES ('" .. game.GetMap() .. "', " .. sql.SQLStr( info.Name ) .. ", " .. info.Time .. ", " .. info.Style .. ", '" .. info.SteamID .. "', '" .. info.Date .. "')" )
+			if not BotData[style] or not BotData[style][1] or #BotData[style][1] == 0 or BotFrames[style] == 0 then
+				return
 			end
-			
+
+			local queryExist = SQL:Prepare("SELECT nTime FROM game_bots WHERE szMap = ? AND nStyle = ?")
+			queryExist:BindParameters(game.GetMap(), info.Style)
+			local Exist = queryExist:Execute()
+			if Core:Assert(Exist, "nTime") and tonumber(Exist[1]["nTime"]) then
+				local queryUpdate = SQL:Prepare("UPDATE game_bots SET szPlayer = ?, nTime = ?, szSteam = ?, szDate = ? WHERE szMap = ? AND nStyle = ?")
+				queryUpdate:BindParameters(info.Name, info.Time, info.SteamID, info.Date, game.GetMap(), info.Style)
+				queryUpdate:Execute()
+			else
+				local queryInsert = SQL:Prepare("INSERT INTO game_bots VALUES (?, ?, ?, ?, ?, ?)")
+				queryInsert:BindParameters(game.GetMap(), info.Name, info.Time, info.Style, info.SteamID, info.Date)
+				queryInsert:Execute()
+			end
+
 			local name = _C.GameType .. "/bots/bot_" .. game.GetMap()
-			if style != _C.Style.Normal then
+			if style ~= _C.Style.Normal then
 				name = name .. "_" .. style
 			end
-			
-			if file.Exists( name .. ".txt", "DATA" ) then
+
+			if file.Exists(name .. ".txt", "DATA") then
 				local find = 1
-				local fp = string.gsub( name, "bots/", "bots/revisions/" ) .. "_v"
-				
-				while file.Exists( fp .. find .. ".txt", "DATA" ) do
+				local fp = string.gsub(name, "bots/", "bots/revisions/") .. "_v"
+
+				while file.Exists(fp .. find .. ".txt", "DATA") do
 					find = find + 1
 				end
-				
-				local existing = file.Read( name .. ".txt", "DATA" )
-				file.Write( fp .. find .. ".txt", util.TableToJSON( info ) .. "\n" )
-				file.Append( fp .. find .. ".txt", existing )
+
+				local existing = file.Read(name .. ".txt", "DATA")
+				file.Write(fp .. find .. ".txt", util.TableToJSON(info) .. "\n")
+				file.Append(fp .. find .. ".txt", existing)
 			end
-			
-			local RunData = util.Compress( util.TableToJSON( BotData[ style ] ) )
-			file.Write( name .. ".txt", RunData )
-			
-			BotInfo[ style ].Saved = true
+
+			local RunData = util.Compress(util.TableToJSON(BotData[style]))
+			file.Write(name .. ".txt", RunData)
+
+			BotInfo[style].Saved = true
 		end
 	end
 end
+
 
 
 -- Dynamic player system
